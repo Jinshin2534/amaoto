@@ -2,7 +2,7 @@
 
 窓辺でマイクを向けると、雨音から「いま時間何ミリくらいの雨か」を推定し、Open-Meteo の現在降水量と並べて答え合わせするアプリ。
 
-公開: https://amaoto.vercel.app
+公開: https://amaoto-kei.vercel.app (amaoto.vercel.app は他人のサイト)
 
 ## 正直さの設計
 
