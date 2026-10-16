@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>雨音計 — 雨音から時間雨量を推定する</title>
+    <meta name="description" content="窓辺でマイクを向けると、雨音から「いま時間何ミリくらいの雨か」を推定し、Open-Meteo と答え合わせします。校正するまで数値は出しません。" />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>☔</text></svg>" />
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <header>
+        <h1>雨音計<span class="subtitle">あまおとけい</span></h1>
+        <div class="source">
+          <span id="source-label">停止中</span>
+          <button id="btn-mic">🎤 マイク</button>
+          <button id="btn-demo">▶ デモ</button>
+        </div>
+      </header>
+
+      <section id="demo-bar" hidden>
+        <label>デモの雨量(真値) <input id="demo-rate" type="range" min="0" max="60" step="0.5" value="5" /> <b id="demo-rate-val">5</b> mm/h</label>
+        <label><input id="demo-voice" type="checkbox" /> 話し声を混ぜる</label>
+        <span class="muted">合成の雨音です。校正はマイクとは別に保存されません。</span>
+      </section>
+
+      <main>
+        <section class="readout">
+          <div class="big"><span id="rate">—</span><span class="unit">mm/h</span></div>
+          <div id="range" class="range"></div>
+          <div id="label" class="label"></div>
+          <p id="message" class="message">マイクかデモを選んでください</p>
+          <div class="meter" title="雨帯域(1〜8 kHz)の背景との差">
+            <div id="meter-fill"></div>
+            <div id="meter-floor"></div>
+          </div>
+          <div id="diag" class="diag"></div>
+        </section>
+
+        <section class="card compare">
+          <h2>答え合わせ <small>Open-Meteo の現在降水量</small></h2>
+          <div class="row">
+            <div><div class="k">音の推定</div><div id="cmp-est" class="v">—</div></div>
+            <div><div class="k">Open-Meteo</div><div id="cmp-ref" class="v">—</div></div>
+          </div>
+          <p id="cmp-verdict" class="verdict"></p>
+          <div class="actions">
+            <button id="btn-locate">📍 現在地で取得</button>
+            <button id="btn-log">記録する</button>
+          </div>
+          <p class="muted small" id="loc-label"></p>
+          <p class="muted small">Open-Meteo は観測ではなく数値予報モデルの値(直前15分の合計を時間雨量に換算、格子は数km)。答え合わせの相手としても誤差があります。</p>
+          <ol id="log" class="log"></ol>
+        </section>
+
+        <section class="card">
+          <h2>スペクトル <small>いま / 背景 / 雨の校正</small></h2>
+          <div class="legend"><span><i></i>いま</span><span><i class="lg-bg"></i>背景</span><span><i class="lg-cal"></i>雨の校正</span></div>
+          <canvas id="spec" height="160"></canvas>
+          <p class="muted small">網掛けが推定に使う 1〜8 kHz。低い音(車・空調)と高い音(マイクの雑音)は使いません。</p>
+        </section>
+
+        <section class="card calib">
+          <h2>校正 <small>終わるまで数値は出しません</small></h2>
+          <p class="muted small">屋根や窓の素材、マイクとの距離で雨音の大きさは何倍も変わります。同じ場所・同じ端末で2回だけ録ってください。</p>
+          <div class="step" id="step-bg">
+            <div class="step-head"><b>① 晴れの日の背景</b> 雨が降っていないとき、いつもの窓辺で10秒</div>
+            <div class="step-status" id="bg-status">未記録</div>
+            <button id="btn-bg">背景を録る(10秒)</button>
+          </div>
+          <div class="step" id="step-rain">
+            <div class="step-head"><b>② 雨の日に1回</b> 雨が降っているとき、同じ場所で10秒。そのときの雨量を基準として入れます</div>
+            <label class="ref">基準の雨量 <input id="ref-rate" type="number" min="0" step="0.1" placeholder="例 3" /> mm/h
+              <button id="btn-ref-om" class="link">Open-Meteo の値を入れる</button></label>
+            <p class="muted small">気象庁の雨雲レーダー(高解像度降水ナウキャスト)の値など、信頼できる値があればそちらを。雨量の違う日に何回か録ると傾きも当てます。</p>
+            <ul id="points" class="points"></ul>
+            <button id="btn-rain">雨を録る(10秒)</button>
+          </div>
+          <div class="progress" id="rec-progress" hidden><div id="rec-fill"></div><span id="rec-text"></span></div>
+          <p id="calib-msg" class="calib-msg"></p>
+          <div id="model-desc" class="muted small"></div>
+          <button id="btn-reset" class="danger">校正を消す</button>
+        </section>
+
+        <section class="card how">
+          <h2>しくみ</h2>
+          <p>雨粒が窓や屋根を叩く音は 1〜8 kHz に広く平らに出ます。その帯域のパワーから晴れの日の背景を引いた「雨の超過パワー」E が、雨量 R に対して E ∝ R<sup>p</sup> になると考えます(粒の数は雨量にほぼ比例し、大雨ほど粒が大きく一粒の音も大きいので p は 1 より少し大きい)。</p>
+          <p>雨の日1回の実測でこの式の位置を決めます。傾き p は1回では決まらないので 1.0〜1.6 と仮定し、その幅を推定の幅にそのまま足します。校正した雨量から離れるほど幅が開くのはこのためです。</p>
+          <p>数値を出さないとき: 校正前 / 背景との差が 1 dB 未満(検出下限) / 倍音の筋がある音が多い(声・音楽) / 0.5秒ごとの音量の変動が大きい(物音・通過車)。音量は0.5秒ごとの平均の中央値なので、ときどき鳴る音には引っぱられにくいですが、雨の中で話し続けると多めに出ます。</p>
+          <p class="muted small">音はすべて端末内で処理し、どこにも送信しません。Open-Meteo に送るのは緯度経度(小数3桁)だけです。</p>
+        </section>
+      </main>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

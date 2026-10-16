@@ -1,0 +1,18 @@
+{
+  "name": "amaoto",
+  "version": "0.1.0",
+  "description": "雨音計 — 窓辺の雨音から時間雨量(mm/h)を推定し、Open-Meteoと答え合わせする",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest run"
+  },
+  "license": "ISC",
+  "packageManager": "pnpm@10.33.0",
+  "devDependencies": {
+    "vite": "^8.2.2",
+    "vitest": "^4.1.11"
+  }
+}
